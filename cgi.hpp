@@ -5,6 +5,9 @@
 #include "request.hpp"
 #include <fcntl.h>
 #include <unistd.h>
+#include "./last/config_file/configFile.hpp"
+#include <sys/stat.h>
+class   client;
 
 class cgi
 {
@@ -17,14 +20,18 @@ private:
     char                                **env;
     char                                **args;
     pid_t                               pid;
-public:
+    int                                 status;
     int                                 out_fd;
+    std::string                         cgi_cmd;
+public:
     cgi();
-    // cgi(const cgi& other);
+    cgi(const cgi& other);
+    cgi&    operator=(const cgi& other);
     ~cgi();
-    void        cgi_init(std::string input, request req);
-    std::string get_cgi();
+    void        cgi_init(const one_server& server, const client& client);
+    void        set_cgi(const Location& location, const std::string& path);
     void        cgi_execute();
+    std::string cgi_out(one_server& server, client& client);
 };
 
 #endif

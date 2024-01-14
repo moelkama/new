@@ -1,9 +1,10 @@
 #include "respons.hpp"
 
-respons::respons()
+respons::respons(const one_server& server)
 {
-    this->Status = std::pair<int, std::string>(200, "OK");
-    set_header(SERVER, SERVER_NAME);
+    this->Status.first = 201;
+    this->Status.second = "Created";
+    set_header(SERVER, server._server_name);
 }
 
 void    respons::set_header(std::string key, std::string value)
@@ -27,30 +28,40 @@ void    respons::set_Body(std::string body)
     set_header(CONTENT_LENGTH, std::to_string(this->Body.length()));
 }
 
-void    respons::set_Status(int st)
+void    respons::set_Status(int st, const one_server& server)
 {
-    std::string     reasons[] = {"OK", "Bad Request", "Created", "Not Allowed", "Forbiden", "Request-URI Too Long", "Not Implemented"};
-    int             status[] = {200, 400, 201, 405, 403, 414, 501};
+    std::string     reasons[] = {"OK", "Bad Request", "Not Found", "Not Allowed", "Forbiden", "Request-URI Too Long", "Internal Server Error", "Not Implemented"};
+    int             status[] = {200, 400, 404, 405, 403, 414, 500, 501};
     unsigned int    i;
     std::string     line;
-    std::fstream    error_page(std::string("./error_pages/error").append(std::to_string(st)).append(".html").c_str());
+
     this->Status.first = st;
     for (i = 0; i < sizeof(status)/ sizeof(int); i++)
         if (status[i] == st)
             break;
     this->Status.second = reasons[i];
-    if (!error_page.is_open())
+    std::ifstream    error_page(server.get_error_page(std::to_string(st)));
+    if (error_page.is_open())
     {
-        std::cout<<"ERRoooooor"<<std::endl;
-        return ;
+        while (!error_page.eof())
+        {
+            std::getline(error_page, line);
+            this->Body.append(line + LINE_SEPARATOR);
+        }
+        set_header(CONTENT_TYPE, "text/html");
+        set_header(CONTENT_LENGTH, std::to_string(this->Body.length()));
     }
-    while (!error_page.eof())
-    {
-        std::getline(error_page, line);
-        this->Body.append(line + LINE_SEPARATOR);
-    }
-    set_header(CONTENT_TYPE, "text/html");
-    set_header(CONTENT_LENGTH, std::to_string(this->Body.length()));
+}
+
+void    respons::set_post_info(const post& p)
+{
+    this->set_header(CONTENT_TYPE, "application/json");
+    this->Body = "{\n\t\"name\": \"";
+    this->Body += p.get_out_name();
+    this->Body += "\",\n\t\"location\": \"";
+    this->Body += p.get_url() + p.get_out_name();
+    this->Body += "\"\n}";
+    this->set_header(CONTENT_LENGTH, std::to_string(this->Body.length()));
 }
 
 std::string respons::prepare_respons()

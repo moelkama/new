@@ -1,4 +1,4 @@
-OBJ = main.o request.o post.o respons.o cgi.o ./last/config_file/configFile.o
+OBJ = main.o request.o post.o respons.o cgi.o client_class.o ./last/config_file/configFile.o 
 
 NAME = mkatfi
 CXX = c++
@@ -21,7 +21,7 @@ rm:
 	rm ../post/*
 
 run: all clean
-	rm -f ../post/*
+	# rm -f ../post/*
 	./$(NAME) ./last/config_file/c.conf
 out:
 	./$(NAME) ./last/config_file/c.conf

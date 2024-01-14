@@ -29,7 +29,7 @@ int main(int c, char **v)
     sockaddr_in server_address;
     server_address.sin_family = AF_INET;       // IPv4
     server_address.sin_addr.s_addr = INADDR_ANY;  // Accept connections from any IP
-    server_address.sin_port = htons(8080);    // Port to listen on (in network byte order)
+    server_address.sin_port = htons(80);    // Port to listen on (in network byte order)
 
     if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
     {
@@ -47,6 +47,7 @@ int main(int c, char **v)
     int client_socket;
     sockaddr_in client_address;
     socklen_t client_addr_size = sizeof(client_address);
+    while (1){
     client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_addr_size);
     std::cout << "Connection established with a client\n";
     if (client_socket < 0)
@@ -58,35 +59,55 @@ int main(int c, char **v)
 
     char    buffer[BUFFER_SIZE + 1];
     size_t  x;
-    client  client;
+    int     client_idx = 0;
+    client  client(server->_name_server[client_idx]);
 
+    // std::cout<<"name0:"<<server->
     std::cout<<"-------------"<<std::endl;
-    try
+    do
     {
-        do
+        memset(buffer, 0, BUFFER_SIZE + 1);
+        x = read(client_socket, buffer, BUFFER_SIZE);
+        try
         {
-            memset(buffer, 0, BUFFER_SIZE + 1);
-            x = read(client_socket, buffer, BUFFER_SIZE);
-            std::cout<<std::string("").append(buffer, x);
+            // std::cout<<std::string("").append(buffer, x);
             if (client.request.parse_request(std::string("").append(buffer, x)))
             {
                 if (client.request.get_method() == "POST")
-                    client.post.post_request(client.request);
+                    client.post.post_request(client.request, server->_name_server[client_idx]);
                 else
                     throw (405);
             }
-        }while (x == BUFFER_SIZE);
-    }
-    catch(int status)
-    {
-        std::cout<<"status : "<<status<<std::endl;
-        client.respons.set_Status(status);
-        // client.cgi_out();//webser config
-        write(client_socket, client.respons.prepare_respons().c_str(), client.respons.prepare_respons().length());
-    }
-    catch(...){std::cout<<"ERRRROOROROOROROOROROO"<<std::endl;}
-    close(client_socket);
+        }
+        catch(int status)
+        {
+            std::cout<<"status : "<<status<<std::endl;
+            std::string msg;
+            std::string cgi_out;
+            std::cout<<"upload_path:"<<client.post.get_upload_path()<<"$"<<std::endl;
+            if (status == 201)
+            {
+                if (client.post.is_cgi)
+                {
+                    std::cout<<"CGI"<<std::endl;
+                    cgi_out = client.cgi.cgi_out(server->_name_server[client_idx], client);
+                }
+                else
+                    client.respons.set_post_info(client.post);
+            }
+            else
+                client.respons.set_Status(status, server->_name_server[client_idx]);
+            msg = client.respons.prepare_respons() + cgi_out;
+            std::cout<<"msg->"<<msg<<"$"<<std::endl;
+            write(client_socket, msg.c_str(), msg.length());
+            break;
+            //
+            // disconect with the client
+        }
+        catch(...){std::cout<<"ERRRROOROROOROROOROROO"<<std::endl;}
+    }while (x == BUFFER_SIZE);
+    close(client_socket);}
     close(server_socket);
-    (void)server;
+    // while (true);
     return 0;
 }

@@ -8,12 +8,12 @@
 #include <unistd.h>
 #include "request.hpp"
 #include "./last/config_file/configFile.hpp"
+#include <sys/stat.h>
 
 class post
 {
 private:
     std::fstream    out;
-    std::string     out_name;
     bool            first_time;
     size_t          max_size;
     std::string     rest;
@@ -30,15 +30,22 @@ private:
     std::string     content_length;
     std::string     transfer_encoding;
     ///
+    short           mode;
+    std::string     out_name;
+    std::string     url;
     std::string     upload_path;
-    bool            is_cgi;
 public:
+    bool            is_cgi;
     post();
-    void    chunked(std::string body);
-    void    boundarry(std::string body);
-    void    raw(std::string content);
-    void    post_request(request req, one_server server);
+    void        parse_upload_path(std::string upload_path);
+    void        init(request& req, one_server& server);
+    void        chunked(std::string body);
+    void        boundarry(std::string body);
+    void        raw(std::string content);
+    void        post_request(request& req, one_server& server);
     std::string get_out_name() const;
+    std::string get_upload_path() const;
+    std::string get_url() const;
 };
 
 #endif

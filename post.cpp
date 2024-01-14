@@ -2,6 +2,8 @@
 
 post::post()
 {
+    this->upload_path = "/tmp/";
+    this->mode = 0;
     this->chunked_size = 0;
     this->first_time = true;
     this->h = false;
@@ -13,12 +15,22 @@ std::string post::get_out_name() const
     return (this->out_name);
 }
 
+std::string post::get_upload_path() const
+{
+    return (this->upload_path);
+}
+
+std::string post::get_url() const
+{
+    return (this->url);
+}
+
 void    post::create_file(std::string content_type)
 {
     std::string     applications[] = {"text/plain", "text/html", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4"};
     std::string     extensions[] = {"txt", "html", "jpeg", "pdf", "mp3", "mp4"};
     std::string     extension;
-    unsigned int    i;  
+    unsigned int    i;
     struct timeval  Now;
 
     for (i = 0; i < sizeof(applications)/ sizeof(std::string); i++)
@@ -28,10 +40,9 @@ void    post::create_file(std::string content_type)
     // do
     // {
         gettimeofday(&Now, NULL);
-        this->out_name = this->upload_path + std::to_string(Now.tv_sec) + "-" + std::to_string(Now.tv_usec) + "." + extension;
+        this->out_name = std::to_string(Now.tv_sec) + "-" + std::to_string(Now.tv_usec) + "." + extension;
     // } while (access(file_name.c_str(), F_OK) != -1);
-    std::cout<<"this->out_name :"<<this->out_name<<std::endl;
-    this->out.open(this->out_name, std::ios::out);
+    this->out.open(this->upload_path + this->out_name, std::ios::out);
 }
 
 void    post::boundarry(std::string body)
@@ -119,7 +130,7 @@ void    post::chunked(std::string body)
     }
     if (this->chunked_size >= this->rest.length()/*important ==>'\0' inside buffer*/)
     {
-        if (!this->boundary.empty())
+        if (this->mode == 3)
             this->boundarry(this->rest);
         else
             this->out<<this->rest;
@@ -128,7 +139,7 @@ void    post::chunked(std::string body)
     }
     else
     {
-        if (!this->boundary.empty())
+        if (this->mode == 3)
             this->boundarry(this->rest.substr(0, this->chunked_size));
         else
             this->out<<this->rest.substr(0, this->chunked_size);
@@ -151,50 +162,83 @@ void    post::raw(std::string content)
     }
 }
 
-void post::post_request(request req, one_server server)
+void    post::parse_upload_path(std::string upload_path)
 {
-    try
-    {
-        std::string content;
+    struct stat path_info;
 
-        content = req.get_body();
-        if (this->first_time)
-        {
-            /////
-            Location    location;
-            location = server.get_location(req.get_path());
-            // if (location.upload_path)
-            //     this->upload_path = location.get_upload_path();
-            // else
-                this->upload_path = "../post/";
-            /////
-            this->first_time = false;
-            this->content_type = req.get_header(CONTENT_TYPE);
-            if (this->content_type.empty())
-                throw (400);
-            this->content_length = req.get_header(CONTENT_LENGTH);
-            this->transfer_encoding = req.get_header(TRANSFER_ENCODING);
-            if (content_type.substr(0, this->content_type.find(";")) == MULTIPART)
-                this->boundary = this->content_type.substr(this->content_type.find("boundary=") + strlen("boundary="));
-            else
-            {
-                if (this->content_length.empty() && this->transfer_encoding.empty())
-                    throw (400);
-                if (!this->transfer_encoding.empty() && this->transfer_encoding != "chunked")
-                    throw (505); //not allowed
-                this->max_size = atoi(this->content_length.c_str());
-                this->create_file(this->content_type);
-            }
-        }
-        if (this->transfer_encoding == "chunked")
-            this->chunked(content);
-        else if (!this->boundary.empty())
-            this->boundarry(content);
-        else
-            this->raw(content);
-    }
-    catch(int e)
+    if (stat(upload_path.c_str(), &path_info) != 0)
+        throw 404;
+    if (S_ISDIR(path_info.st_mode))
     {
-        std::cout<<"Status :"<< e<< std::endl;
+        this->upload_path = upload_path;
     }
+    else if (S_ISREG(path_info.st_mode))
+    {
+        this->is_cgi = true;
+        //check file extention on cgi
+    }
+}
+
+void    post::init(request& req,  one_server& server)
+{
+    size_t      point;
+
+    this->url = req.get_path().substr(0, req.get_path().find("?"));
+    this->first_time = false;
+    this->content_type = req.get_header(CONTENT_TYPE);
+    this->content_length = req.get_header(CONTENT_LENGTH);
+    if (this->content_type.empty())
+        throw (400);
+    this->transfer_encoding = req.get_header(TRANSFER_ENCODING);
+    if (this->content_type.substr(0, this->content_type.find(";")) == MULTIPART)
+        this->boundary = this->content_type.substr(this->content_type.find("boundary=") + strlen("boundary="));
+    //location
+    this->parse_upload_path(server.get_upload_path(this->url));
+    if (!this->is_cgi && !server.get_location(this->url)._upload)
+        throw (403);
+    //mode
+    //chunked
+    if (!this->transfer_encoding.empty())
+    {
+        if (!this->content_length.empty())
+            throw (400);
+        if (this->transfer_encoding != "chunked")
+            throw (405); //not allowed
+        if (this->boundary.empty())
+        {
+            this->mode = 1;
+            this->create_file(this->content_type);
+        }
+        else
+            this->mode = 3;
+        return ;
+    }
+    //boundary
+    if (!this->boundary.empty())
+    {
+        if (!this->content_length.empty())
+            throw (400);
+        this->mode = 2;
+        return ;
+    }
+    //raw
+    if (this->content_length.empty())
+        throw (400);
+    this->create_file(this->content_type);
+    this->max_size = atoi(this->content_length.c_str());
+}
+
+void post::post_request(request& req, one_server& server)
+{
+    std::string content;
+
+    content = req.get_body();
+    if (this->first_time)
+        this->init(req, server);
+    if (this->mode == 1 || this->mode == 3)
+        this->chunked(content);
+    else if (this->mode == 2)
+        this->boundarry(content);
+    else
+        this->raw(content);
 }
