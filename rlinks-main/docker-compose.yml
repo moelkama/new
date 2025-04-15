@@ -1,0 +1,59 @@
+services:
+  postgres:
+      container_name: postgres
+      image: postgres
+      build:
+        context: ./app/database
+        dockerfile: Dockerfile
+      volumes:
+        - db:/var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "/docker-entrypoint-initdb.d/02_check_db.sh"]
+        interval: 10s
+        timeout: 30s
+        retries: 100
+      env_file:
+        - .env
+      networks:
+        - rlinks
+      restart: always
+
+  backend:
+    container_name: backend
+    image: backend
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./app/backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    networks:
+      - rlinks
+    restart: always
+
+  adminer:
+    container_name: adminer
+    image: adminer
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    networks:
+      - rlinks
+    restart: always
+
+volumes:
+  db:
+    name: database
+    driver: local
+  
+networks:
+  rlinks:
+    name: rlinks
+    driver: bridge
